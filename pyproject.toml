@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cluster-judge"
+version = "3.0.0"
+description = "Reference-free LLM-as-judge evaluator for text clusterings"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "numpy",
+    "pandas",
+    "scikit-learn",
+]
+
+[project.optional-dependencies]
+progress = ["tqdm"]
+test = ["pytest"]
+
+[project.scripts]
+cluster-judge = "cluster_judge:main"
+
+[tool.setuptools]
+py-modules = ["cluster_judge"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
