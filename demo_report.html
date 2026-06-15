@@ -2,145 +2,114 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Cluster Distinctiveness Report</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cluster Distinctiveness</title>
 <style>
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-          max-width: 960px; margin: 2em auto; padding: 0 1.5em; color: #1a1a1a; line-height: 1.6; }
-  h1 { font-size: 1.6em; font-weight: 700; margin-bottom: 0.2em; }
-  h2 { font-size: 1.15em; font-weight: 600; margin-top: 2em; border-bottom: 1px solid #e0e0e0;
-        padding-bottom: 0.3em; }
-  .headline { display: flex; align-items: center; gap: 2em; margin: 1.5em 0; flex-wrap: wrap; }
-  .big-number { font-size: 4em; font-weight: 800; color: #b85c00; line-height: 1; }
-  .subtext { color: #555; font-size: 0.95em; }
-  .gate-badge { display: inline-block; padding: 0.3em 0.9em; border-radius: 4px;
-                  font-weight: 700; font-size: 0.95em;
-                  background: #e8f5eb;
-                  color: #2a7a3b; }
-  table { border-collapse: collapse; width: 100%; font-size: 0.9em; margin-top: 0.8em; }
-  th { text-align: left; padding: 0.5em 0.75em; background: #f5f5f5;
-        border-bottom: 2px solid #ddd; font-weight: 600; }
-  td { padding: 0.45em 0.75em; border-bottom: 1px solid #eee; }
-  tr:last-child td { border-bottom: none; }
-  .meta { color: #666; font-size: 0.85em; margin-bottom: 1em; }
-  .explain { background: #f9f9f9; border-left: 4px solid #ccc; padding: 1em 1.25em;
-              border-radius: 0 6px 6px 0; margin: 1em 0; }
-  .explain p { margin: 0.4em 0; }
-  code { background: #eef; padding: 0.1em 0.3em; border-radius: 3px; font-size: 0.9em; }
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+        max-width:900px;margin:2em auto;padding:0 1.5em;color:#1a1a1a;line-height:1.6}
+  h1{font-size:1.5em;font-weight:700;margin-bottom:.2em}
+  h2{font-size:1.1em;font-weight:600;margin-top:2em;border-bottom:1px solid #e0e0e0;padding-bottom:.3em}
+  .hl{display:flex;gap:2.5em;margin:1.5em 0;flex-wrap:wrap;align-items:flex-start}
+  .big{font-size:4em;font-weight:800;color:#b85c00;line-height:1}
+  .sub{color:#555;font-size:.9em;margin-top:.3em}
+  .badge{display:inline-block;padding:.3em .9em;border-radius:4px;font-weight:700;
+           background:#e8f5eb;color:#2a7a3b}
+  table{border-collapse:collapse;width:100%;font-size:.9em;margin-top:.6em}
+  th{text-align:left;padding:.5em .7em;background:#f5f5f5;border-bottom:2px solid #ddd;font-weight:600}
+  td{padding:.4em .7em;border-bottom:1px solid #eee}
+  tr:last-child td{border-bottom:none}
+  .meta{color:#666;font-size:.85em;margin-bottom:.8em}
+  .box{background:#f9f9f9;border-left:4px solid #ccc;padding:.9em 1.1em;
+        border-radius:0 6px 6px 0;margin:.8em 0}
+  .box p{margin:.3em 0}
+  code{background:#eef;padding:.1em .3em;border-radius:3px;font-size:.9em}
 </style>
 </head>
 <body>
-
 <h1>Cluster Distinctiveness Report</h1>
 <p class="meta">
   8 clusters · 980 texts ·
-  8 judged · model: <code>mock</code>
+  8 judged · model: <code>mock</code> ·
+  96 LLM calls
 </p>
 
-
-
-<div class="headline">
+<div class="hl">
   <div>
-    <div class="big-number">73.5%</div>
-    <div class="subtext" style="margin-top:0.3em">
-      Weighted distinctiveness<br>
-      <span style="font-size:0.9em;color:#888">
-        5 of 8 judged clusters pass the 50% threshold
+    <div class="big">73.5%</div>
+    <div class="sub">Weighted distinctiveness<br>
+      <span style="color:#888;font-size:.9em">
+        5 of 8 clusters
+        pass the 50% threshold
       </span>
     </div>
   </div>
   <div>
-    <div class="subtext">Calibration gate</div>
-    <div class="gate-badge">PASS</div>
-    <div class="subtext" style="margin-top:0.5em">
-      Sp = 100% &nbsp;·&nbsp;
-      Se = 100% &nbsp;·&nbsp;
-      γ = 0%
+    <div class="sub">Calibration gate</div>
+    <div class="badge">PASS</div>
+    <div class="sub" style="margin-top:.5em">
+      γ = 0% &nbsp;·&nbsp; far detection = 100%
     </div>
   </div>
 </div>
 
-
-
 <h2>What this number means</h2>
-<div class="explain">
-  <p><strong>Weighted distinctiveness (73.5%)</strong> is the share of your text corpus
-  that lives in clusters well-separated from their nearest neighbours, as judged by
-  the LLM under your equivalence rule.</p>
-  <p>A cluster scores high when items from a neighbouring cluster, secretly planted
-  among its members, are reliably detected and isolated. A low score means the
-  cluster bleeds into its neighbours — the LLM cannot tell them apart under your rule.</p>
-  <p>The weighting is by cluster size, so a large cluster that fails pulls the score
-  down more than a small one that fails.</p>
+<div class="box">
+  <p><strong>73.5%</strong> of your text corpus lives in clusters that are
+  well-separated from their nearest neighbours, as judged by the LLM under
+  your equivalence rule.</p>
+  <p>A cluster scores high when an item from a neighbouring cluster, secretly
+  planted among its members, is reliably spotted and isolated by the LLM.
+  A low score means the cluster blurs into its neighbours — the LLM cannot
+  tell them apart under your rule.</p>
+  <p>Weighting is by cluster size, so a large failing cluster pulls the score
+  down more than a small one.</p>
 </div>
 
 <h2>How it is computed</h2>
-<div class="explain">
-  <p><strong>Step 1 — Calibration.</strong> Before measuring anything, the LLM is run on
-  planted controls of known composition: groups of truly-same items (→ measures specificity Sp),
-  mixed groups of items from two different clusters (→ sensitivity Se), nonsense text (→ junk
-  detection), and items from far-away clusters (→ far detection). The gate passes only if the
-  judge is reliable enough on all four checks.</p>
-  <p><strong>Step 2 — Intruder detection.</strong> For each cluster, one item from a
-  neighbouring cluster is planted among <code>k=?</code> home items
-  and the LLM is asked to sort them by kind. If the planted item ends up as its own singleton
-  group it is <em>detected</em>. This is repeated across several waves and neighbour sources.</p>
-  <p><strong>Step 3 — Correction.</strong> Raw detection rates are corrected for the chance
-  isolation rate γ (how often the LLM isolates a truly-same item by accident) using the
-  Rogan–Gladen formula: <code>corrected = (raw − γ) / (1 − γ)</code>.</p>
-  <p><strong>Step 4 — Aggregation.</strong> Each cluster's corrected detection rate is thresholded
-  at 50%. The headline number is the size-weighted fraction of clusters above
-  that threshold (raw weighted average score: 82%).</p>
+<div class="box">
+  <p><strong>Step 1 — Calibration.</strong> The LLM is run on two kinds of planted
+  controls: (a) <em>pure</em> draws — <code>k</code> items from the same cluster
+  — to measure <strong>γ</strong>, the rate the LLM accidentally isolates a
+  truly-same item; (b) <em>far</em> draws — <code>k−1</code> home items plus
+  one from a distant cluster — to verify the judge can detect obvious intruders
+  (gate threshold: ≥ 70%).</p>
+  <p><strong>Step 2 — Intruder detection.</strong> For each cluster, one item
+  from a near-neighbour cluster is planted among <code>k=?</code> home items and the LLM
+  sorts them by kind. Detected = planted item is a singleton group.</p>
+  <p><strong>Step 3 — Correction.</strong> Raw detection rates are corrected for
+  chance isolation: <code>corrected = (raw − γ) / (1 − γ)</code>.</p>
+  <p><strong>Step 4 — Aggregation.</strong> Each cluster's corrected rate is
+  thresholded at 50%. The headline is the
+  size-weighted fraction above that threshold.</p>
 </div>
 
 <h2>How much to trust it</h2>
-<div class="explain">
-  <p>Trust rests on two things:</p>
+<div class="box">
   <p><strong>Calibration gate: <span style="color:#2a7a3b">PASS</span>.</strong>
-  A PASS means the judge separated known-good from known-bad controls reliably enough for
-  the error correction to be meaningful. A FAIL means the numbers below are unreliable —
-  the judge or the rule needs fixing before you read the scores.</p>
-  <p><strong>Per-cluster confidence intervals</strong> (lo–hi columns in the table below)
-  are 95% Wilson intervals on the corrected detection rate. Clusters with few intruder draws
-  (<code>n</code>) have wide intervals. Raise <code>intruder_waves_max</code> or
-  <code>coverage_target</code> to narrow them.</p>
+  PASS = the judge reliably detects obvious intruders, so the correction is
+  meaningful. FAIL = the judge or the rule is too weak; fix before reading scores.</p>
+  <p><strong>Per-cluster 95% confidence intervals</strong> (lo–hi column) reflect
+  how many intruder draws were made per cluster (<code>n</code>). Narrow the
+  intervals by raising <code>n_draws</code> or <code>coverage_target</code>.</p>
+  <p><strong>γ = 0%</strong> is the chance isolation rate —
+  how often the LLM mistakenly isolates a truly-same item. Low γ means
+  little correction is needed; high γ means results depend heavily on it.</p>
 </div>
 
-<h2>Calibration checks</h2>
-<table>
-  <tr><th>Check</th><th style="text-align:center">Pass</th>
-      <th style="text-align:right">Score</th><th style="text-align:right">Target</th>
-      <th style="text-align:right">n</th></tr>
-  <tr><td>Same-kind items kept together</td><td style='text-align:center;color:#2a7a3b;font-weight:bold'>✓</td><td style='text-align:right'>100%</td><td style='text-align:right;color:#666'>≥ 0.70</td><td style='text-align:right;color:#888'>24</td></tr>
-<tr><td>Different-kind items separated</td><td style='text-align:center;color:#2a7a3b;font-weight:bold'>✓</td><td style='text-align:right'>100%</td><td style='text-align:right;color:#666'>≥ 0.70</td><td style='text-align:right;color:#888'>24</td></tr>
-<tr><td>Nonsense text isolated</td><td style='text-align:center;color:#2a7a3b;font-weight:bold'>✓</td><td style='text-align:right'>100%</td><td style='text-align:right;color:#666'>≥ 0.80</td><td style='text-align:right;color:#888'>12</td></tr>
-<tr><td>Far-cluster intruder detected</td><td style='text-align:center;color:#2a7a3b;font-weight:bold'>✓</td><td style='text-align:right'>100%</td><td style='text-align:right;color:#666'>≥ 0.80</td><td style='text-align:right;color:#888'>24</td></tr>
-<tr><td>Error correction usable (Se+Sp−1 ≥ 0.20)</td><td style='text-align:center;color:#2a7a3b;font-weight:bold'>✓</td><td style='text-align:right'>100%</td><td style='text-align:right;color:#666'>Se+Sp−1 ≥ 0.20</td><td style='text-align:right;color:#888'>2160</td></tr>
-
-</table>
-<p class="meta" style="margin-top:0.5em">
-  Sp=100% (specificity: same items co-grouped) ·
-  Se=100% (sensitivity: diff items separated) ·
-  γ=0% (chance isolation rate) ·
-  Se+Sp−1=100% (correction denominator)
-</p>
-
-<h2>Per-cluster distinctiveness</h2>
-
+<h2>Per-cluster results</h2>
 <table>
   <tr><th>ID</th><th>Label</th><th style="text-align:right">Size</th>
       <th style="text-align:right">Score</th><th style="text-align:right">95% CI</th>
-      <th style="text-align:right">n draws</th><th>Verdict</th></tr>
-  <tr style='background:#f0faf2'><td>A</td><td>A</td><td style='text-align:right'>200</td><td style='text-align:right'>100%</td><td style='text-align:right;color:#666'>61–100%</td><td style='text-align:right;color:#888'>6</td><td><span style='color:#2a7a3b;font-weight:bold'>✓ distinct</span></td></tr>
-<tr style='background:#f0faf2'><td>B</td><td>B</td><td style='text-align:right'>160</td><td style='text-align:right'>100%</td><td style='text-align:right;color:#666'>61–100%</td><td style='text-align:right;color:#888'>6</td><td><span style='color:#2a7a3b;font-weight:bold'>✓ distinct</span></td></tr>
-<tr style='background:#f0faf2'><td>C</td><td>C</td><td style='text-align:right'>140</td><td style='text-align:right'>100%</td><td style='text-align:right;color:#666'>61–100%</td><td style='text-align:right;color:#888'>6</td><td><span style='color:#2a7a3b;font-weight:bold'>✓ distinct</span></td></tr>
-<tr style='background:#f0faf2'><td>D</td><td>D</td><td style='text-align:right'>120</td><td style='text-align:right'>100%</td><td style='text-align:right;color:#666'>61–100%</td><td style='text-align:right;color:#888'>6</td><td><span style='color:#2a7a3b;font-weight:bold'>✓ distinct</span></td></tr>
-<tr style='background:#f0faf2'><td>E</td><td>E</td><td style='text-align:right'>100</td><td style='text-align:right'>100%</td><td style='text-align:right;color:#666'>61–100%</td><td style='text-align:right;color:#888'>6</td><td><span style='color:#2a7a3b;font-weight:bold'>✓ distinct</span></td></tr>
-<tr style='background:#fff8f8'><td>G</td><td>G</td><td style='text-align:right'>90</td><td style='text-align:right'>33%</td><td style='text-align:right;color:#666'>12–65%</td><td style='text-align:right;color:#888'>9</td><td><span style='color:#c0392b;font-weight:bold'>✗ indistinct</span></td></tr>
-<tr style='background:#fff8f8'><td>H</td><td>H</td><td style='text-align:right'>90</td><td style='text-align:right'>33%</td><td style='text-align:right;color:#666'>12–65%</td><td style='text-align:right;color:#888'>9</td><td><span style='color:#c0392b;font-weight:bold'>✗ indistinct</span></td></tr>
-<tr style='background:#fff8f8'><td>I</td><td>I</td><td style='text-align:right'>80</td><td style='text-align:right'>33%</td><td style='text-align:right;color:#666'>12–65%</td><td style='text-align:right;color:#888'>9</td><td><span style='color:#c0392b;font-weight:bold'>✗ indistinct</span></td></tr>
+      <th style="text-align:right">n draws</th><th style="text-align:center">Distinct</th></tr>
+  <tr style='background:#f0faf2'><td>A</td><td>A</td><td style='text-align:right'>200</td><td style='text-align:right'>100%</td><td style='text-align:right;color:#666'>76–100%</td><td style='text-align:right;color:#888'>12</td><td style='text-align:center'><span style='color:#2a7a3b;font-weight:bold'>✓</span></td></tr>
+<tr style='background:#f0faf2'><td>B</td><td>B</td><td style='text-align:right'>160</td><td style='text-align:right'>100%</td><td style='text-align:right;color:#666'>76–100%</td><td style='text-align:right;color:#888'>12</td><td style='text-align:center'><span style='color:#2a7a3b;font-weight:bold'>✓</span></td></tr>
+<tr style='background:#f0faf2'><td>C</td><td>C</td><td style='text-align:right'>140</td><td style='text-align:right'>100%</td><td style='text-align:right;color:#666'>76–100%</td><td style='text-align:right;color:#888'>12</td><td style='text-align:center'><span style='color:#2a7a3b;font-weight:bold'>✓</span></td></tr>
+<tr style='background:#f0faf2'><td>D</td><td>D</td><td style='text-align:right'>120</td><td style='text-align:right'>100%</td><td style='text-align:right;color:#666'>76–100%</td><td style='text-align:right;color:#888'>12</td><td style='text-align:center'><span style='color:#2a7a3b;font-weight:bold'>✓</span></td></tr>
+<tr style='background:#f0faf2'><td>E</td><td>E</td><td style='text-align:right'>100</td><td style='text-align:right'>100%</td><td style='text-align:right;color:#666'>76–100%</td><td style='text-align:right;color:#888'>12</td><td style='text-align:center'><span style='color:#2a7a3b;font-weight:bold'>✓</span></td></tr>
+<tr style='background:#fff8f8'><td>G</td><td>G</td><td style='text-align:right'>90</td><td style='text-align:right'>0%</td><td style='text-align:right;color:#666'>0–24%</td><td style='text-align:right;color:#888'>12</td><td style='text-align:center'><span style='color:#c0392b;font-weight:bold'>✗</span></td></tr>
+<tr style='background:#fff8f8'><td>H</td><td>H</td><td style='text-align:right'>90</td><td style='text-align:right'>0%</td><td style='text-align:right;color:#666'>0–24%</td><td style='text-align:right;color:#888'>12</td><td style='text-align:center'><span style='color:#c0392b;font-weight:bold'>✗</span></td></tr>
+<tr style='background:#fff8f8'><td>I</td><td>I</td><td style='text-align:right'>80</td><td style='text-align:right'>0%</td><td style='text-align:right;color:#666'>0–24%</td><td style='text-align:right;color:#888'>12</td><td style='text-align:center'><span style='color:#c0392b;font-weight:bold'>✗</span></td></tr>
 
 </table>
-
 </body>
 </html>
