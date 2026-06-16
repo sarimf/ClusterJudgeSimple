@@ -12,15 +12,10 @@ license = { text = "MIT" }
 dependencies = [
     "numpy",
     "pandas",
-    "scikit-learn",
 ]
 
 [project.optional-dependencies]
 progress = ["tqdm"]
-test = ["pytest"]
-
-[project.scripts]
-cluster-judge = "cluster_judge:main"
 
 [tool.setuptools]
 py-modules = ["cluster_judge"]
