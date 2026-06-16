@@ -369,7 +369,8 @@ def evaluate(data, embeddings=None, *, same_when: str = "", unit: str = "",
                 "n_judged": len(clusters)},
         "calibration": cal,
         "meta": {"model": cfg.model, "n_texts": len(df), "n_clusters": K,
-                 "n_llm_calls": client.n_calls, "same_when": cfg.same_when, "unit": cfg.unit},
+                 "n_llm_calls": client.n_calls, "k_partition": cfg.k_partition,
+                 "same_when": cfg.same_when, "unit": cfg.unit},
         "clusters": clusters,
     }
 
@@ -377,39 +378,112 @@ def evaluate(data, embeddings=None, *, same_when: str = "", unit: str = "",
 # ── Text report ───────────────────────────────────────────────────────────────
 
 def print_report(results: dict) -> None:
-    kpi = results.get("kpi", {})
-    cal = results.get("calibration", {})
+    kpi  = results.get("kpi", {})
+    cal  = results.get("calibration", {})
+    meta = results.get("meta", {})
     clusters = results.get("clusters", [])
 
-    wd   = kpi.get("weighted_distinct")
-    gate = cal.get("gate_ok", False)
-    pct  = f"{wd * 100:.1f}%" if wd is not None else "—"
+    wd    = kpi.get("weighted_distinct")
+    gate  = cal.get("gate_ok", False)
+    pct   = f"{wd * 100:.1f}%" if wd is not None else "—"
+    n_dis = kpi.get("n_distinct", "?")
+    n_jud = kpi.get("n_judged",   "?")
+    thr   = int(kpi.get("threshold", 0.5) * 100)
 
     def p(x): return f"{x * 100:.0f}%" if x is not None else "—"
+    def hr(ch="─", w=60): print(ch * w)
 
-    print(f"\n{'Weighted distinctiveness:':26s} {pct}  "
-          f"({kpi.get('n_distinct','?')} of {kpi.get('n_judged','?')} clusters "
-          f"pass the {int(kpi.get('threshold', 0.5) * 100)}% threshold)")
-    print(f"{'Calibration gate:':26s} {'PASS' if gate else 'FAIL'}   "
-          f"γ={p(cal.get('gamma'))}  far detection={p(cal.get('far_rate'))}")
+    hr("═")
+    print(f"  CLUSTER DISTINCTIVENESS REPORT")
+    print(f"  {meta.get('n_clusters','?')} clusters · "
+          f"{meta.get('n_texts','?'):,} texts · "
+          f"{n_jud} judged · "
+          f"model: {meta.get('model','?') or '(unset)'} · "
+          f"{meta.get('n_llm_calls','?')} LLM calls")
+    hr("═")
+
+    print(f"\n  Weighted distinctiveness   {pct}")
+    print(f"  {n_dis} of {n_jud} clusters pass the {thr}% threshold")
+    print(f"\n  Calibration gate           {'PASS ✓' if gate else 'FAIL ✗'}")
+    print(f"  γ = {p(cal.get('gamma'))}   far detection = {p(cal.get('far_rate'))}")
+
     if not gate:
-        print("  ⚠  Gate FAILED — judge cannot reliably detect obvious intruders."
-              " Fix same_when or gateway before trusting scores.")
+        print("\n  ⚠  Gate FAILED — the judge could not reliably detect obvious")
+        print("     far-cluster intruders. Fix your same_when rule or gateway")
+        print("     before reading the scores below.")
+
+    hr()
+    print("\n  WHAT THIS NUMBER MEANS\n")
+    print(f"  {pct} of your text corpus lives in clusters that are well-separated")
+    print("  from their nearest neighbours, as judged by the LLM under your")
+    print("  equivalence rule.")
+    print()
+    print("  A cluster scores high when an item from a neighbouring cluster,")
+    print("  secretly planted among its members, is reliably spotted and isolated")
+    print("  by the LLM. A low score means the cluster blurs into its neighbours")
+    print("  — the LLM cannot tell them apart under your rule.")
+    print()
+    print("  Weighting is by cluster size, so a large failing cluster pulls the")
+    print("  score down more than a small one.")
+
+    hr()
+    print("\n  HOW IT IS COMPUTED\n")
+    k = meta.get("k_partition", 10)
+    print(f"  Step 1 — Calibration. The LLM is run on two kinds of planted")
+    print(f"  controls: (a) pure draws — {k} items from the same cluster — to")
+    print(f"  measure γ, the rate the LLM accidentally isolates a truly-same")
+    print(f"  item; (b) far draws — {k-1} home items + 1 from a distant cluster")
+    print(f"  — to verify the judge can detect obvious intruders (gate ≥ 70%).")
+    print()
+    print(f"  Step 2 — Intruder detection. For each cluster, one item from a")
+    print(f"  near-neighbour cluster is planted among {k} home items and the LLM")
+    print(f"  sorts them by kind. Detected = planted item is a singleton group.")
+    print()
+    print(f"  Step 3 — Correction. Raw rates are corrected for chance isolation:")
+    print(f"  corrected = (raw − γ) / (1 − γ)   [γ = {p(cal.get('gamma'))}]")
+    print()
+    print(f"  Step 4 — Aggregation. Each cluster's corrected rate is thresholded")
+    print(f"  at {thr}%. The headline is the size-weighted fraction above it.")
+
+    hr()
+    print("\n  HOW MUCH TO TRUST IT\n")
+    print(f"  Calibration gate: {'PASS' if gate else 'FAIL'}. "
+          + ("PASS = the judge reliably detects obvious intruders,"
+             if gate else "FAIL = the judge or rule is too weak;"))
+    if gate:
+        print("  so the Rogan-Gladen correction is meaningful and scores are")
+        print("  trustworthy.")
+    else:
+        print("  fix same_when or your gateway before relying on scores.")
+    print()
+    print(f"  Per-cluster 95% confidence intervals (lo–hi) reflect how many")
+    print(f"  intruder draws were made (n). Narrow them by raising n_draws or")
+    print(f"  coverage_target in Config.")
+    print()
+    print(f"  γ = {p(cal.get('gamma'))} is the chance isolation rate — how often the")
+    print(f"  LLM mistakenly isolates a truly-same item. Low γ means little")
+    print(f"  correction is needed; high γ means results depend heavily on it.")
 
     if clusters:
-        id_w  = max(len(c["cluster_id"]) for c in clusters)
-        lab_w = max(len(c["label"])      for c in clusters)
-        id_w  = max(id_w,  7)
-        lab_w = max(lab_w, 5)
-        hdr = (f"\n{'Cluster':<{id_w}}  {'Label':<{lab_w}}  {'Size':>6}"
+        hr()
+        top = clusters[:10]   # already sorted by size descending
+        shown = len(top)
+        total = len(clusters)
+        suffix = f" (top {shown} of {total} by size)" if total > shown else ""
+        print(f"\n  PER-CLUSTER RESULTS{suffix}\n")
+        id_w  = max((len(c["cluster_id"]) for c in top), default=7)
+        lab_w = max((len(c["label"])      for c in top), default=5)
+        id_w  = max(id_w, 7); lab_w = max(lab_w, 5)
+        hdr = (f"  {'Cluster':<{id_w}}  {'Label':<{lab_w}}  {'Size':>6}"
                f"  {'Score':>6}  {'95% CI':>9}  {'n':>4}  Distinct")
         print(hdr)
-        print("-" * len(hdr))
-        for c in clusters:
-            ci = (f"{c['lo']*100:.0f}–{c['hi']*100:.0f}%"
-                  if c["n_draws"] else "—")
+        print("  " + "─" * (len(hdr) - 2))
+        for c in top:
+            ci   = f"{c['lo']*100:.0f}–{c['hi']*100:.0f}%" if c["n_draws"] else "—"
             mark = "✓" if c["distinct"] else "✗"
-            print(f"{c['cluster_id']:<{id_w}}  {c['label']:<{lab_w}}  "
+            print(f"  {c['cluster_id']:<{id_w}}  {c['label']:<{lab_w}}  "
                   f"{c['size']:>6,}  {p(c['score']):>6}  {ci:>9}  "
                   f"{c['n_draws']:>4}  {mark}")
+    hr("═")
+    print()
 
