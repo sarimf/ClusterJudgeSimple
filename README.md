@@ -2,7 +2,7 @@
 
 A reference-free **LLM-as-judge** evaluator that measures one thing: **how well-separated your text clusters are from their nearest neighbours**.
 
-The headline output is a single number — **weighted distinctiveness** — plus a calibration gate that tells you how much to trust it. Everything is written to a self-contained HTML page.
+The headline output is a single number — **weighted distinctiveness** — plus a calibration gate that tells you how much to trust it.
 
 ---
 
@@ -19,109 +19,78 @@ The headline metric is the **size-weighted fraction of clusters** that pass a 50
 Python ≥ 3.10 and:
 
 ```
-pip install numpy pandas scikit-learn
+pip install numpy pandas
 ```
 
 `tqdm` is optional (progress bars).
 
 ---
 
-## Quickstart (offline demo)
-
-```
-python cluster_judge.py --demo
-```
-
-Runs on synthetic data with a mock judge, prints the score to stdout, and writes `demo_report.html`.
+## Usage
 
 ```python
-from cluster_judge import make_demo_data, evaluate, write_html, Config
+from cluster_judge import use_genai, evaluate, print_report, Config
 
-df, emb = make_demo_data()
-cfg = Config(same_when="are the same kind of objection (the underlying concern)")
-results = evaluate(df, emb, config=cfg, progress=False)
-write_html(results, "report.html")
-```
+# 1. Register your LLM gateway
+@use_genai
+def call_llm(messages: list[dict], json_mode: bool = True) -> str:
+    # messages is a list of {"role": ..., "content": ...} dicts (OpenAI format)
+    # return the raw response string
+    response = your_client.chat(messages, ...)
+    return response.text
 
----
-
-## Your own data
-
-```python
-from cluster_judge import evaluate, write_html, Config
-
+# 2. Configure
 cfg = Config(
-    same_when="are the same kind of objection (the underlying concern), regardless of how it is answered",
+    same_when="are the same kind of objection, regardless of how it is answered",
     unit="each text is a customer objection raised on an outbound sales call",
-    model="gateway",   # anything other than "mock" routes through your registered gateway
 )
 
+# 3. Evaluate
 results = evaluate(
-    data=df,              # DataFrame or path to csv/tsv/parquet/jsonl
-    embeddings=emb,       # aligned numpy array, or use embedding_col=
+    data=df,          # DataFrame with 'text' and 'cluster_id' columns
+                      # or path to .csv / .tsv / .parquet / .jsonl
+    embeddings=emb,   # aligned numpy array (N × D float32), or use embedding_col=
     config=cfg,
 )
-write_html(results, "report.html")
+
+# 4. Print results
+print_report(results)
 ```
 
-Or from the CLI:
-
-```
-python cluster_judge.py \
-  --data rows.parquet --embedding-col embedding \
-  --same-when "are the same kind of objection" \
-  --unit "each text is a customer objection" \
-  --model gateway \
-  --out report.html
-```
+`print_report` writes a summary line and a per-cluster table to stdout. `results` is a plain dict you can inspect or serialise directly.
 
 ---
 
-## Connecting your judge
-
-Register a single function that takes OpenAI-style messages and returns a string:
+## Output dict
 
 ```python
-from cluster_judge import use_genai, evaluate
+results["kpi"]["weighted_distinct"]   # float 0–1, the headline number
+results["kpi"]["n_distinct"]          # int, clusters that passed the threshold
+results["kpi"]["n_judged"]            # int, clusters that were evaluated
 
-def run_model_messages(messages: list[dict], json_mode: bool = True) -> str:
-    # your gateway call here; return the raw string
-    ...
+results["calibration"]["gate_ok"]     # bool — trust the numbers if True
+results["calibration"]["gamma"]       # float, chance-isolation rate γ
+results["calibration"]["far_rate"]    # float, far-intruder detection rate
 
-use_genai(run_model_messages)
-results = evaluate(data=df, embeddings=emb, config=cfg)
+results["clusters"]                   # list of per-cluster dicts:
+#   cluster_id, label, size,
+#   score (corrected detection rate), lo, hi (95% CI bounds),
+#   n_draws, distinct (bool)
 ```
-
-A module-level `run_model_messages` in `__main__` is auto-discovered, so registration is optional if you define one there.
-
----
-
-## Output
-
-`results` is a dict with three sections:
-
-| key | contents |
-|-----|----------|
-| `kpi` | `weighted_distinct_rate`, `weighted_distinct_score`, `n_distinct`, `n_judged`, `threshold` |
-| `calibration` | `Sp`, `Se`, `gamma`, `overall_pass`, per-check results, judge health |
-| `clusters` | per-cluster `distinctiveness {score, lo, hi, n}`, `distinct` flag, `size`, `label` |
-
-`write_html(results, path)` writes the self-contained HTML report.
 
 ---
 
 ## How the calibration gate works
 
-Before measuring anything, the LLM is run on planted controls of known composition:
+Two kinds of planted controls are run before measurement:
 
-| control | tests |
-|---------|-------|
-| Pure (within-cluster kNN) | Same-kind items stay together → **Sp** (specificity) |
-| Mixed (half A + half far B) | Different-kind items are separated → **Se** (sensitivity) |
-| Junk (random word soup) | Nonsense is isolated (sanity check) |
-| Far intruder (distant cluster) | Easy intruder is detected → **γ** (chance isolation rate) |
+| control | what it tests |
+|---------|---------------|
+| **Pure** (all items from one cluster) | Measures **γ** — the rate the LLM accidentally isolates a truly-same item. Used to correct all detection rates. |
+| **Far** (home items + one from a distant cluster) | Verifies the judge can detect obvious intruders. Gate threshold: ≥ 70%. |
 
-The gate PASS means the judge is reliable enough for the error correction to be meaningful. A FAIL means the numbers are not trustworthy — fix your `same_when` rule or gateway first.
+**PASS** means the correction is meaningful and scores are trustworthy.  
+**FAIL** means the judge or `same_when` rule is too weak — fix it before reading scores.
 
 Detection rates are corrected for chance isolation via the Rogan–Gladen formula:
 
@@ -131,20 +100,22 @@ corrected = (raw_detection − γ) / (1 − γ)
 
 ---
 
-## Key tunables (`Config`)
+## Config reference
 
 | field | default | what it controls |
 |-------|---------|------------------|
-| `same_when` | **required** | the equivalence rule every judgment is made under |
+| `same_when` | **required** | equivalence rule every judgment is made under |
 | `unit` | `"each text is a short customer message"` | describes what each item is |
-| `k_partition` | 10 | items per PARTITION call (including the one intruder) |
+| `k_partition` | 10 | items per LLM call (k−1 home + 1 intruder) |
 | `neighbor_m` | 3 | near-neighbour clusters used as intruder sources |
-| `intruder_per_wave` | 4 | intruder draws per cluster per wave |
-| `intruder_waves_max` | 3 | total measurement waves |
-| `coverage_target` | 0.20 | fraction of each cluster sampled |
+| `n_draws` | 24 | intruder draws per cluster |
+| `coverage_target` | 0.5 | fraction of each cluster included in the sampling pool |
 | `min_judgeable` | 5 | clusters smaller than this are skipped |
-| `n_pure / n_mixed / n_junk / n_far` | 24/24/12/24 | calibration control counts |
-| `max_llm_calls` | 20000 | hard budget ceiling |
+| `n_cal_pure` | 60 | pure calibration draws → γ |
+| `n_cal_far` | 48 | far calibration draws → gate |
 | `workers` | 64 | gateway concurrency |
-| `model` | `"mock"` | judge id; `"mock"` uses the offline judge |
-| `mock_eps_split / mock_eps_join` | 0.0/0.0 | inject mock-judge noise to test the correction layer |
+| `max_retries` | 4 | retries per failed gateway call |
+| `backoff` | 0.5 | initial retry delay in seconds (doubles each retry) |
+| `item_chars` | 1024 | max characters per item shown to the LLM |
+| `model` | `""` | passed through to `meta`; use in your gateway to route to a specific model |
+| `seed` | 7 | numpy RNG seed for reproducible sampling |
