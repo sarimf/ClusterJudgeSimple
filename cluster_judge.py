@@ -11,13 +11,12 @@ import argparse
 import json
 import logging
 import math
-import random
 import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -50,10 +49,8 @@ class Config:
     backoff: float = 0.5
     item_chars: int = 1024
     z: float = 1.96
-    model: str = "mock"
+    model: str = ""
     seed: int = 7
-    mock_eps_split: float = 0.0
-    mock_eps_join: float = 0.0
 
     def __post_init__(self):
         if not self.same_when:
@@ -71,18 +68,15 @@ def use_genai(fn: Callable) -> Callable:
 
 class Client:
     def __init__(self, cfg: Config):
+        if _gateway_fn is None:
+            raise RuntimeError("No gateway registered — call use_genai(fn) first.")
         self.cfg = cfg
-        self.mock = cfg.model == "mock" or _gateway_fn is None
         self._lock = threading.Lock()
-        self._rng = random.Random(cfg.seed * 7919 + 13)
         self.n_calls = 0
 
-    def call(self, items: List[str], themes: Optional[List[str]] = None) -> Optional[dict]:
+    def call(self, items: List[str]) -> Optional[dict]:
         with self._lock:
             self.n_calls += 1
-        if self.mock:
-            with self._lock:
-                return _mock(items, themes, self.cfg, self._rng)
         prompt = (
             f"# unit: {self.cfg.unit}\n"
             f"# rule: two items are the SAME KIND when they {self.cfg.same_when}\n"
@@ -105,30 +99,6 @@ class Client:
             time.sleep(delay)
             delay *= 2
         return None
-
-
-def _mock(items: List[str], themes: Optional[List[str]],
-          cfg: Config, rng: random.Random) -> dict:
-    k = len(items)
-    if themes is None:
-        return {"groups": [[i + 1] for i in range(k)]}
-    groups: Dict[str, List[int]] = {}
-    for i, th in enumerate(themes, 1):
-        groups.setdefault(str(th), []).append(i)
-    gs = list(groups.values())
-    if cfg.mock_eps_split > 0:
-        out = []
-        for g in gs:
-            if len(g) >= 2 and rng.random() < cfg.mock_eps_split:
-                c = rng.randrange(1, len(g))
-                out += [g[:c], g[c:]]
-            else:
-                out.append(g)
-        gs = out
-    if cfg.mock_eps_join > 0 and len(gs) >= 2 and rng.random() < cfg.mock_eps_join:
-        i, j = rng.sample(range(len(gs)), 2)
-        gs = [g for ki, g in enumerate(gs) if ki not in (i, j)] + [gs[i] + gs[j]]
-    return {"groups": gs}
 
 
 _JSON_RE = re.compile(r"\{.*\}", re.S)
@@ -166,15 +136,15 @@ def _valid_groups(v: Optional[dict], k: int) -> Optional[List[List[int]]]:
 
 # ── Dispatch ──────────────────────────────────────────────────────────────────
 
-def _dispatch(tasks: List[Tuple[List[str], Optional[List[str]]]],
-              client: Client, cfg: Config, desc: str = "") -> List[Optional[dict]]:
-    """Run (items, themes) pairs in parallel; return aligned list of results."""
+def _dispatch(tasks: List[List[str]], client: Client, cfg: Config,
+              desc: str = "") -> List[Optional[dict]]:
+    """Run item lists in parallel; return aligned list of results."""
     results: List[Optional[dict]] = [None] * len(tasks)
     if not tasks:
         return results
     bar = tqdm(total=len(tasks), desc=desc) if tqdm else None
     with ThreadPoolExecutor(max_workers=min(cfg.workers, len(tasks))) as ex:
-        futs = {ex.submit(lambda i=i: (i, client.call(*tasks[i]))): None
+        futs = {ex.submit(lambda i=i: (i, client.call(tasks[i]))): None
                 for i in range(len(tasks))}
         for f in as_completed(futs):
             i, res = f.result()
@@ -247,7 +217,7 @@ def _rg(raw: float, gamma: float) -> float:
 # ── Main evaluate ─────────────────────────────────────────────────────────────
 
 def evaluate(data, embeddings=None, *, same_when: str = "", unit: str = "",
-             model: str = "mock", config: Optional[Config] = None,
+             model: str = "", config: Optional[Config] = None,
              text_col="text", cluster_col="cluster_id",
              label_col="label", embedding_col=None) -> dict:
 
@@ -268,7 +238,6 @@ def evaluate(data, embeddings=None, *, same_when: str = "", unit: str = "",
     cid_of = {i: str(c) for i, c in enumerate(cats.categories)}
     K      = len(cats.categories)
     texts  = df["text"].astype(str).to_numpy()
-    themes = df["_theme"].to_numpy() if "_theme" in df.columns else None
     emb_n  = _normalize(emb)
 
     # cluster sizes + coverage pools
@@ -286,31 +255,30 @@ def evaluate(data, embeddings=None, *, same_when: str = "", unit: str = "",
     far_nb  = nb[:, max(1, K // 2):-1]                       # far half (self is last at -2)
     code_of = {cid_of[c]: c for c in range(K)}
 
-    def clip(i):   return texts[i][: cfg.item_chars]
-    def th_of(ix): return [str(themes[i]) for i in ix] if themes is not None else None
+    def clip(i): return texts[i][: cfg.item_chars]
 
     def plant_call(home_pool, src_pool):
-        """k-1 home items + 1 planted intruder; return (items, themes, plant_pos)."""
+        """k-1 home items + 1 planted intruder; return (items, plant_pos)."""
         k = cfg.k_partition
         home = rng.choice(home_pool, size=min(k - 1, len(home_pool)), replace=False).tolist()
         p    = int(rng.choice(src_pool))
         pos  = int(rng.integers(len(home) + 1))
         ids  = home[:pos] + [p] + home[pos:]
-        return [clip(i) for i in ids], th_of(ids), pos + 1   # plant_pos is 1-indexed
+        return [clip(i) for i in ids], pos + 1   # plant_pos is 1-indexed
 
     # ── Calibration ───────────────────────────────────────────────────────────
     # pure: k items from same cluster → measure γ (chance isolation rate)
     # far:  k-1 home + 1 far item    → gate check (must be detected ≥ 70%)
     judged_list = list(judged)
-    cal_tasks: List[Tuple] = []
-    cal_meta:  List[dict]  = []
+    cal_tasks: List[List[str]] = []
+    cal_meta:  List[dict] = []
 
     for _ in range(cfg.n_cal_pure):
         cid = judged_list[int(rng.integers(len(judged_list)))]
         if len(judged[cid]) < cfg.k_partition:
             continue
         idxs = rng.choice(judged[cid], size=cfg.k_partition, replace=False).tolist()
-        cal_tasks.append(([clip(i) for i in idxs], th_of(idxs)))
+        cal_tasks.append([clip(i) for i in idxs])
         cal_meta.append({"ctx": "pure"})
 
     for _ in range(cfg.n_cal_far):
@@ -320,8 +288,8 @@ def evaluate(data, embeddings=None, *, same_when: str = "", unit: str = "",
         src = cid_of[int(rng.choice(far_nb[code_of[cid]]))]
         if not len(pools[src]):
             continue
-        items, th, pp = plant_call(judged[cid], pools[src])
-        cal_tasks.append((items, th))
+        items, pp = plant_call(judged[cid], pools[src])
+        cal_tasks.append(items)
         cal_meta.append({"ctx": "far", "pp": pp})
 
     log.info("calibration: %d calls…", len(cal_tasks))
@@ -329,12 +297,12 @@ def evaluate(data, embeddings=None, *, same_when: str = "", unit: str = "",
 
     iso_d = iso_n = far_d = far_n = 0
     for meta, v, task in zip(cal_meta, cal_res, cal_tasks):
-        gs = _valid_groups(v, len(task[0]))
+        gs = _valid_groups(v, len(task))
         if gs is None:
             continue
         if meta["ctx"] == "pure":
             iso_d += sum(1 for g in gs if len(g) == 1)
-            iso_n += len(task[0])
+            iso_n += len(task)
         else:
             far_d += int(any(g == [meta["pp"]] for g in gs))
             far_n += 1
@@ -348,9 +316,9 @@ def evaluate(data, embeddings=None, *, same_when: str = "", unit: str = "",
 
     # ── Measurement ───────────────────────────────────────────────────────────
     client = Client(cfg)
-    meas_tasks: List[Tuple] = []
-    meas_cids:  List[str]   = []
-    meas_ppos:  List[int]   = []
+    meas_tasks: List[List[str]] = []
+    meas_cids:  List[str] = []
+    meas_ppos:  List[int] = []
 
     for cid, pool in judged.items():
         if len(pool) < cfg.k_partition - 1:
@@ -361,8 +329,8 @@ def evaluate(data, embeddings=None, *, same_when: str = "", unit: str = "",
             continue
         for _ in range(cfg.n_draws):
             src = nears[int(rng.integers(len(nears)))]
-            items, th, pp = plant_call(pool, pools[src])
-            meas_tasks.append((items, th))
+            items, pp = plant_call(pool, pools[src])
+            meas_tasks.append(items)
             meas_cids.append(cid)
             meas_ppos.append(pp)
 
@@ -371,7 +339,7 @@ def evaluate(data, embeddings=None, *, same_when: str = "", unit: str = "",
 
     det = {cid: [0, 0] for cid in judged}   # [detected, total]
     for cid, pp, v, task in zip(meas_cids, meas_ppos, meas_res, meas_tasks):
-        gs = _valid_groups(v, len(task[0]))
+        gs = _valid_groups(v, len(task))
         if gs is None:
             continue
         det[cid][0] += int(any(g == [pp] for g in gs))
@@ -400,8 +368,8 @@ def evaluate(data, embeddings=None, *, same_when: str = "", unit: str = "",
                 "n_distinct": sum(c["distinct"] for c in clusters),
                 "n_judged": len(clusters)},
         "calibration": cal,
-        "meta": {"model": "mock" if client.mock else cfg.model,
-                 "n_texts": len(df), "n_clusters": K, "n_llm_calls": client.n_calls,
+        "meta": {"model": cfg.model, "n_texts": len(df), "n_clusters": K,
+                 "n_llm_calls": client.n_calls, "k_partition": cfg.k_partition,
                  "same_when": cfg.same_when, "unit": cfg.unit},
         "clusters": clusters,
     }
@@ -521,8 +489,7 @@ may not be trustworthy. Check your <code>same_when</code> rule and judge gateway
   one from a distant cluster — to verify the judge can detect obvious intruders
   (gate threshold: ≥ 70%).</p>
   <p><strong>Step 2 — Intruder detection.</strong> For each cluster, one item
-  from a near-neighbour cluster is planted among <code>k={meta.get('k_partition',
-  results.get('meta',{}).get('k_partition','?'))}</code> home items and the LLM
+  from a near-neighbour cluster is planted among <code>k={meta.get('k_partition','?')}</code> home items and the LLM
   sorts them by kind. Detected = planted item is a singleton group.</p>
   <p><strong>Step 3 — Correction.</strong> Raw detection rates are corrected for
   chance isolation: <code>corrected = (raw − γ) / (1 − γ)</code>.</p>
@@ -564,66 +531,26 @@ def write_html(results: dict, path: str) -> None:
     log.info("report written to %s", path)
 
 
-# ── Demo data ─────────────────────────────────────────────────────────────────
-
-def make_demo_data(seed: int = 7, dim: int = 32):
-    """5 distinct clusters (A–E) + 3 confusable clusters (G, H, I) sharing a theme."""
-    rng = np.random.default_rng(seed)
-    centers = _normalize(rng.normal(0, 1, (6, dim)).astype(np.float32))
-    shared = centers[5]                                      # G, H, I all live near this
-    offsets = (rng.normal(0, 0.02, (3, dim))).astype(np.float32)
-
-    rows = []
-    plan = [("A", 0, 200, centers[0]), ("B", 1, 160, centers[1]),
-            ("C", 2, 140, centers[2]), ("D", 3, 120, centers[3]),
-            ("E", 4, 100, centers[4]),
-            ("G", 5, 90, shared + offsets[0]),   # same theme as H, I → indistinct
-            ("H", 5, 90, shared + offsets[1]),
-            ("I", 5, 80, shared + offsets[2])]
-
-    for cid, th, n, base in plan:
-        for j in range(n):
-            noise = rng.normal(0, 0.08, dim).astype(np.float32)
-            rows.append((f"cluster {cid} item {j}: topic {th}", cid, th, base + noise))
-
-    df = pd.DataFrame(rows, columns=["text", "cluster_id", "_theme", "_emb"])
-    emb = np.vstack(df["_emb"].to_numpy()).astype(np.float32)
-    return df.drop(columns=["_emb"]), emb
-
-
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
 def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
     p = argparse.ArgumentParser(description="Cluster distinctiveness evaluator")
-    p.add_argument("--demo", action="store_true")
-    p.add_argument("--data")
+    p.add_argument("--data", required=True)
     p.add_argument("--embeddings", help=".npy file")
     p.add_argument("--embedding-col")
-    p.add_argument("--same-when")
+    p.add_argument("--same-when", required=True)
     p.add_argument("--unit", default="each text is a short customer message")
-    p.add_argument("--model", default="mock")
+    p.add_argument("--model", default="")
     p.add_argument("--out", default="report.html")
     p.add_argument("--workers", type=int, default=64)
     p.add_argument("--coverage", type=float, default=0.25)
     args = p.parse_args()
 
-    if args.demo:
-        print("Running offline demo…")
-        df, emb = make_demo_data()
-        cfg = Config(same_when="are about the same topic",
-                     unit="each text is a short customer message",
-                     workers=4, coverage_target=0.35, neighbor_m=2)
-        results = evaluate(df, emb, config=cfg)
-    elif args.data:
-        if not args.same_when:
-            p.error("--same-when is required")
-        emb = np.load(args.embeddings) if args.embeddings else None
-        cfg = Config(same_when=args.same_when, unit=args.unit, model=args.model,
-                     workers=args.workers, coverage_target=args.coverage)
-        results = evaluate(args.data, emb, config=cfg, embedding_col=args.embedding_col)
-    else:
-        p.print_help(); return
+    emb = np.load(args.embeddings) if args.embeddings else None
+    cfg = Config(same_when=args.same_when, unit=args.unit, model=args.model,
+                 workers=args.workers, coverage_target=args.coverage)
+    results = evaluate(args.data, emb, config=cfg, embedding_col=args.embedding_col)
 
     kpi = results["kpi"]; cal = results["calibration"]
     wd  = kpi["weighted_distinct"]
@@ -633,9 +560,8 @@ def main():
     print(f"Calibration: gate={'PASS' if cal['gate_ok'] else 'FAIL'}  "
           f"γ={cal['gamma']:.3f}  far_rate={cal['far_rate']:.2f}")
 
-    out = "demo_report.html" if args.demo else args.out
-    write_html(results, out)
-    print(f"HTML report: {out}")
+    write_html(results, args.out)
+    print(f"HTML report: {args.out}")
 
 
 if __name__ == "__main__":
