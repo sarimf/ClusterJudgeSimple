@@ -7,7 +7,7 @@ Output: HTML report.
 """
 from __future__ import annotations
 
-import argparse
+
 import json
 import logging
 import math
@@ -413,28 +413,3 @@ def print_report(results: dict) -> None:
                   f"{c['size']:>6,}  {p(c['score']):>6}  {ci:>9}  "
                   f"{c['n_draws']:>4}  {mark}")
 
-
-# ── CLI ───────────────────────────────────────────────────────────────────────
-
-def main():
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
-    p = argparse.ArgumentParser(description="Cluster distinctiveness evaluator")
-    p.add_argument("--data", required=True)
-    p.add_argument("--embeddings", help=".npy file")
-    p.add_argument("--embedding-col")
-    p.add_argument("--same-when", required=True)
-    p.add_argument("--unit", default="each text is a short customer message")
-    p.add_argument("--model", default="")
-    p.add_argument("--workers", type=int, default=64)
-    p.add_argument("--coverage", type=float, default=0.25)
-    args = p.parse_args()
-
-    emb = np.load(args.embeddings) if args.embeddings else None
-    cfg = Config(same_when=args.same_when, unit=args.unit, model=args.model,
-                 workers=args.workers, coverage_target=args.coverage)
-    results = evaluate(args.data, emb, config=cfg, embedding_col=args.embedding_col)
-    print_report(results)
-
-
-if __name__ == "__main__":
-    main()
