@@ -369,166 +369,49 @@ def evaluate(data, embeddings=None, *, same_when: str = "", unit: str = "",
                 "n_judged": len(clusters)},
         "calibration": cal,
         "meta": {"model": cfg.model, "n_texts": len(df), "n_clusters": K,
-                 "n_llm_calls": client.n_calls, "k_partition": cfg.k_partition,
-                 "same_when": cfg.same_when, "unit": cfg.unit},
+                 "n_llm_calls": client.n_calls, "same_when": cfg.same_when, "unit": cfg.unit},
         "clusters": clusters,
     }
 
 
-# ── HTML report ───────────────────────────────────────────────────────────────
+# ── Text report ───────────────────────────────────────────────────────────────
 
-def render_html(results: dict) -> str:
+def print_report(results: dict) -> None:
     kpi = results.get("kpi", {})
     cal = results.get("calibration", {})
-    meta = results.get("meta", {})
     clusters = results.get("clusters", [])
 
-    score    = kpi.get("weighted_distinct")
-    gate     = cal.get("gate_ok", False)
-    pct      = f"{score * 100:.1f}%" if score is not None else "—"
-    color    = "#2a7a3b" if score and score >= 0.75 else "#b85c00" if score and score >= 0.5 else "#c0392b"
-    g_color  = "#2a7a3b" if gate else "#c0392b"
-    g_label  = "PASS" if gate else "FAIL"
+    wd   = kpi.get("weighted_distinct")
+    gate = cal.get("gate_ok", False)
+    pct  = f"{wd * 100:.1f}%" if wd is not None else "—"
 
     def p(x): return f"{x * 100:.0f}%" if x is not None else "—"
 
-    rows = ""
-    for c in clusters:
-        ok = c["distinct"]
-        ci = f"{c['lo']*100:.0f}–{c['hi']*100:.0f}%" if c["n_draws"] else "—"
-        badge = (f"<span style='color:#2a7a3b;font-weight:bold'>✓</span>"
-                 if ok else f"<span style='color:#c0392b;font-weight:bold'>✗</span>")
-        bg = "#f0faf2" if ok else "#fff8f8"
-        rows += (f"<tr style='background:{bg}'><td>{c['cluster_id']}</td>"
-                 f"<td>{c['label']}</td><td style='text-align:right'>{c['size']:,}</td>"
-                 f"<td style='text-align:right'>{p(c['score'])}</td>"
-                 f"<td style='text-align:right;color:#666'>{ci}</td>"
-                 f"<td style='text-align:right;color:#888'>{c['n_draws']}</td>"
-                 f"<td style='text-align:center'>{badge}</td></tr>\n")
+    print(f"\n{'Weighted distinctiveness:':26s} {pct}  "
+          f"({kpi.get('n_distinct','?')} of {kpi.get('n_judged','?')} clusters "
+          f"pass the {int(kpi.get('threshold', 0.5) * 100)}% threshold)")
+    print(f"{'Calibration gate:':26s} {'PASS' if gate else 'FAIL'}   "
+          f"γ={p(cal.get('gamma'))}  far detection={p(cal.get('far_rate'))}")
+    if not gate:
+        print("  ⚠  Gate FAILED — judge cannot reliably detect obvious intruders."
+              " Fix same_when or gateway before trusting scores.")
 
-    gate_warn = ("""<div style='background:#fff3cd;border:1px solid #ffc107;padding:1em;
-border-radius:6px;margin-bottom:1.5em'><strong>⚠ Calibration gate FAILED.</strong>
-The judge could not reliably detect obvious far-cluster intruders (rate
-""" + p(cal.get("far_rate")) + """ &lt; 70%). The distinctiveness numbers below
-may not be trustworthy. Check your <code>same_when</code> rule and judge gateway.</div>"""
-                if not gate else "")
-
-    return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Cluster Distinctiveness</title>
-<style>
-  body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-        max-width:900px;margin:2em auto;padding:0 1.5em;color:#1a1a1a;line-height:1.6}}
-  h1{{font-size:1.5em;font-weight:700;margin-bottom:.2em}}
-  h2{{font-size:1.1em;font-weight:600;margin-top:2em;border-bottom:1px solid #e0e0e0;padding-bottom:.3em}}
-  .hl{{display:flex;gap:2.5em;margin:1.5em 0;flex-wrap:wrap;align-items:flex-start}}
-  .big{{font-size:4em;font-weight:800;color:{color};line-height:1}}
-  .sub{{color:#555;font-size:.9em;margin-top:.3em}}
-  .badge{{display:inline-block;padding:.3em .9em;border-radius:4px;font-weight:700;
-           background:{'#e8f5eb' if gate else '#fdecea'};color:{g_color}}}
-  table{{border-collapse:collapse;width:100%;font-size:.9em;margin-top:.6em}}
-  th{{text-align:left;padding:.5em .7em;background:#f5f5f5;border-bottom:2px solid #ddd;font-weight:600}}
-  td{{padding:.4em .7em;border-bottom:1px solid #eee}}
-  tr:last-child td{{border-bottom:none}}
-  .meta{{color:#666;font-size:.85em;margin-bottom:.8em}}
-  .box{{background:#f9f9f9;border-left:4px solid #ccc;padding:.9em 1.1em;
-        border-radius:0 6px 6px 0;margin:.8em 0}}
-  .box p{{margin:.3em 0}}
-  code{{background:#eef;padding:.1em .3em;border-radius:3px;font-size:.9em}}
-</style>
-</head>
-<body>
-<h1>Cluster Distinctiveness Report</h1>
-<p class="meta">
-  {meta.get('n_clusters','?')} clusters · {meta.get('n_texts','?'):,} texts ·
-  {kpi.get('n_judged','?')} judged · model: <code>{meta.get('model','?')}</code> ·
-  {meta.get('n_llm_calls','?')} LLM calls
-</p>
-{gate_warn}
-<div class="hl">
-  <div>
-    <div class="big">{pct}</div>
-    <div class="sub">Weighted distinctiveness<br>
-      <span style="color:#888;font-size:.9em">
-        {kpi.get('n_distinct','?')} of {kpi.get('n_judged','?')} clusters
-        pass the {int(kpi.get('threshold',0.5)*100)}% threshold
-      </span>
-    </div>
-  </div>
-  <div>
-    <div class="sub">Calibration gate</div>
-    <div class="badge">{g_label}</div>
-    <div class="sub" style="margin-top:.5em">
-      γ = {p(cal.get('gamma'))} &nbsp;·&nbsp; far detection = {p(cal.get('far_rate'))}
-    </div>
-  </div>
-</div>
-
-<h2>What this number means</h2>
-<div class="box">
-  <p><strong>{pct}</strong> of your text corpus lives in clusters that are
-  well-separated from their nearest neighbours, as judged by the LLM under
-  your equivalence rule.</p>
-  <p>A cluster scores high when an item from a neighbouring cluster, secretly
-  planted among its members, is reliably spotted and isolated by the LLM.
-  A low score means the cluster blurs into its neighbours — the LLM cannot
-  tell them apart under your rule.</p>
-  <p>Weighting is by cluster size, so a large failing cluster pulls the score
-  down more than a small one.</p>
-</div>
-
-<h2>How it is computed</h2>
-<div class="box">
-  <p><strong>Step 1 — Calibration.</strong> The LLM is run on two kinds of planted
-  controls: (a) <em>pure</em> draws — <code>k</code> items from the same cluster
-  — to measure <strong>γ</strong>, the rate the LLM accidentally isolates a
-  truly-same item; (b) <em>far</em> draws — <code>k−1</code> home items plus
-  one from a distant cluster — to verify the judge can detect obvious intruders
-  (gate threshold: ≥ 70%).</p>
-  <p><strong>Step 2 — Intruder detection.</strong> For each cluster, one item
-  from a near-neighbour cluster is planted among <code>k={meta.get('k_partition','?')}</code> home items and the LLM
-  sorts them by kind. Detected = planted item is a singleton group.</p>
-  <p><strong>Step 3 — Correction.</strong> Raw detection rates are corrected for
-  chance isolation: <code>corrected = (raw − γ) / (1 − γ)</code>.</p>
-  <p><strong>Step 4 — Aggregation.</strong> Each cluster's corrected rate is
-  thresholded at {int(kpi.get('threshold',0.5)*100)}%. The headline is the
-  size-weighted fraction above that threshold.</p>
-</div>
-
-<h2>How much to trust it</h2>
-<div class="box">
-  <p><strong>Calibration gate: <span style="color:{g_color}">{g_label}</span>.</strong>
-  PASS = the judge reliably detects obvious intruders, so the correction is
-  meaningful. FAIL = the judge or the rule is too weak; fix before reading scores.</p>
-  <p><strong>Per-cluster 95% confidence intervals</strong> (lo–hi column) reflect
-  how many intruder draws were made per cluster (<code>n</code>). Narrow the
-  intervals by raising <code>n_draws</code> or <code>coverage_target</code>.</p>
-  <p><strong>γ = {p(cal.get('gamma'))}</strong> is the chance isolation rate —
-  how often the LLM mistakenly isolates a truly-same item. Low γ means
-  little correction is needed; high γ means results depend heavily on it.</p>
-</div>
-
-<h2>Per-cluster results</h2>
-<table>
-  <tr><th>ID</th><th>Label</th><th style="text-align:right">Size</th>
-      <th style="text-align:right">Score</th><th style="text-align:right">95% CI</th>
-      <th style="text-align:right">n draws</th><th style="text-align:center">Distinct</th></tr>
-  {rows}
-</table>
-</body>
-</html>"""
-
-
-def write_html(results: dict, path: str) -> None:
-    import os
-    if os.path.isdir(path):
-        path = os.path.join(path, "report.html")
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(render_html(results))
-    log.info("report written to %s", path)
+    if clusters:
+        id_w  = max(len(c["cluster_id"]) for c in clusters)
+        lab_w = max(len(c["label"])      for c in clusters)
+        id_w  = max(id_w,  7)
+        lab_w = max(lab_w, 5)
+        hdr = (f"\n{'Cluster':<{id_w}}  {'Label':<{lab_w}}  {'Size':>6}"
+               f"  {'Score':>6}  {'95% CI':>9}  {'n':>4}  Distinct")
+        print(hdr)
+        print("-" * len(hdr))
+        for c in clusters:
+            ci = (f"{c['lo']*100:.0f}–{c['hi']*100:.0f}%"
+                  if c["n_draws"] else "—")
+            mark = "✓" if c["distinct"] else "✗"
+            print(f"{c['cluster_id']:<{id_w}}  {c['label']:<{lab_w}}  "
+                  f"{c['size']:>6,}  {p(c['score']):>6}  {ci:>9}  "
+                  f"{c['n_draws']:>4}  {mark}")
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
@@ -542,7 +425,6 @@ def main():
     p.add_argument("--same-when", required=True)
     p.add_argument("--unit", default="each text is a short customer message")
     p.add_argument("--model", default="")
-    p.add_argument("--out", default="report.html")
     p.add_argument("--workers", type=int, default=64)
     p.add_argument("--coverage", type=float, default=0.25)
     args = p.parse_args()
@@ -551,17 +433,7 @@ def main():
     cfg = Config(same_when=args.same_when, unit=args.unit, model=args.model,
                  workers=args.workers, coverage_target=args.coverage)
     results = evaluate(args.data, emb, config=cfg, embedding_col=args.embedding_col)
-
-    kpi = results["kpi"]; cal = results["calibration"]
-    wd  = kpi["weighted_distinct"]
-    print(f"\nWeighted distinctiveness: {wd * 100:.1f}%" if wd is not None else "\nWeighted distinctiveness: —")
-    print(f"  ({kpi['n_distinct']} of {kpi['n_judged']} clusters pass the "
-          f"{int(kpi['threshold']*100)}% threshold)")
-    print(f"Calibration: gate={'PASS' if cal['gate_ok'] else 'FAIL'}  "
-          f"γ={cal['gamma']:.3f}  far_rate={cal['far_rate']:.2f}")
-
-    write_html(results, args.out)
-    print(f"HTML report: {args.out}")
+    print_report(results)
 
 
 if __name__ == "__main__":
