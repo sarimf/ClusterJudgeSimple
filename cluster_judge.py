@@ -39,11 +39,11 @@ class Config:
     unit: str = "each text is a short customer message"
     k_partition: int = 10      # items per PARTITION call (includes 1 intruder)
     neighbor_m: int = 3        # near-neighbour clusters as intruder sources
-    n_draws: int = 12          # intruder draws per cluster
-    coverage_target: float = 0.25
+    n_draws: int = 24          # intruder draws per cluster
+    coverage_target: float = 0.5
     min_judgeable: int = 5
-    n_cal_pure: int = 30       # pure calibration draws → γ
-    n_cal_far: int = 24        # far calibration draws → gate
+    n_cal_pure: int = 60       # pure calibration draws → γ
+    n_cal_far: int = 48        # far calibration draws → gate
     workers: int = 64
     max_retries: int = 4
     backoff: float = 0.5
